@@ -1,4 +1,4 @@
-import { Bug, Wifi, AlertTriangle, Github } from 'lucide-react'
+import { AlertTriangle, Bug, Wifi } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Badge } from '@/components/ui/badge'
 import { useCrawlerStore } from '@/store/crawlerStore'
@@ -29,15 +29,6 @@ export function Sidebar({ onShowDisclaimer }: SidebarProps) {
           <span className="font-mono font-bold text-cyber-text-primary tracking-wider text-sm">
             MediaCrawler
           </span>
-          <a
-            href="https://github.com/NanmiCoder/MediaCrawler"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1.5 px-2 py-1 rounded-md border border-cyber-border-subtle hover:border-cyber-neon-cyan hover:shadow-glow-cyan-sm transition-all bg-cyber-bg-tertiary"
-          >
-            <Github className="w-4 h-4 text-cyber-text-secondary" />
-            <span className="text-xs font-mono text-cyber-text-secondary">Star</span>
-          </a>
           {isRunning && (
             <Badge variant="running" className="text-[10px]">
               {t('status.active')}

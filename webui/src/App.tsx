@@ -2,10 +2,9 @@ import { useState } from 'react'
 import { Toaster } from 'sonner'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { MainContent } from '@/components/layout/MainContent'
-import { AuthorFooter } from '@/components/layout/AuthorFooter'
 import { CrawlerConfigPanel } from '@/components/config/CrawlerConfigPanel'
 import { EnvironmentCheck, isEnvChecked } from '@/components/env/EnvironmentCheck'
-import { LicenseDisclaimer, isLicenseAccepted } from '@/components/license/LicenseDisclaimer'
+import { isLicenseAccepted, LicenseDisclaimer } from '@/components/license/LicenseDisclaimer'
 
 function App() {
   // Initialize by checking localStorage if license has been accepted
@@ -25,15 +24,13 @@ function App() {
   }
 
   const handleShowDisclaimer = () => {
-    setShowDisclaimer(true)
+    setShowDisclaimer(false)
   }
 
   return (
     <div className="flex flex-col h-screen cyber-grid overflow-hidden relative">
       {/* License Disclaimer Modal - Shows first or when triggered */}
-      {(!licenseAccepted || showDisclaimer) && (
-        <LicenseDisclaimer onAccept={handleLicenseAccept} />
-      )}
+      {(!licenseAccepted || showDisclaimer) && <LicenseDisclaimer onAccept={handleLicenseAccept} />}
 
       {/* Environment Check Modal - Shows after license accepted */}
       {licenseAccepted && !showDisclaimer && !envChecked && (
@@ -53,9 +50,6 @@ function App() {
         {/* Console - Collapsible Terminal */}
         <MainContent />
       </div>
-
-      {/* Author Footer */}
-      <AuthorFooter />
 
       {/* Toast notifications - Theme-aware style */}
       <Toaster
