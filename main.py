@@ -44,6 +44,7 @@ from media_platform.weibo import WeiboCrawler
 from media_platform.xhs import XiaoHongShuCrawler
 from media_platform.zhihu import ZhihuCrawler
 from tools.async_file_writer import AsyncFileWriter
+from tools.vi_translator import start as start_vi_translator
 from var import crawler_type_var
 
 
@@ -99,6 +100,9 @@ async def _generate_wordcloud_if_needed() -> None:
 
 async def main() -> None:
     global crawler
+
+    # Start Vietnamese translation daemon thread
+    start_vi_translator()
 
     args = await cmd_arg.parse_cmd()
     if args.init_db:

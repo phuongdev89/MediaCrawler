@@ -5,14 +5,14 @@ import { MainContent } from '@/components/layout/MainContent'
 import { CrawlerConfigPanel } from '@/components/config/CrawlerConfigPanel'
 import { EnvironmentCheck, isEnvChecked } from '@/components/env/EnvironmentCheck'
 import { isLicenseAccepted, LicenseDisclaimer } from '@/components/license/LicenseDisclaimer'
+import { XiaohongshuPage } from '@/components/xhs/XiaohongshuPage'
+
+type AppPage = 'dashboard' | 'xhs'
 
 function App() {
-  // Initialize by checking localStorage if license has been accepted
   const [licenseAccepted, setLicenseAccepted] = useState(() => isLicenseAccepted())
-  // Initialize by checking localStorage if env check has passed
   const [envChecked, setEnvChecked] = useState(() => isEnvChecked())
-  // State for showing disclaimer manually
-  const [showDisclaimer, setShowDisclaimer] = useState(false)
+  const [activePage, setActivePage] = useState<AppPage>('dashboard')
 
   const handleEnvCheckComplete = () => {
     setEnvChecked(true)
@@ -20,38 +20,31 @@ function App() {
 
   const handleLicenseAccept = () => {
     setLicenseAccepted(true)
-    setShowDisclaimer(false)
-  }
-
-  const handleShowDisclaimer = () => {
-    setShowDisclaimer(false)
   }
 
   return (
     <div className="flex flex-col h-screen cyber-grid overflow-hidden relative">
-      {/* License Disclaimer Modal - Shows first or when triggered */}
-      {(!licenseAccepted || showDisclaimer) && <LicenseDisclaimer onAccept={handleLicenseAccept} />}
+      {!licenseAccepted && <LicenseDisclaimer onAccept={handleLicenseAccept} />}
 
-      {/* Environment Check Modal - Shows after license accepted */}
-      {licenseAccepted && !showDisclaimer && !envChecked && (
+      {licenseAccepted && !envChecked && (
         <EnvironmentCheck onCheckComplete={handleEnvCheckComplete} />
       )}
 
-      {/* Header Bar */}
-      <Sidebar onShowDisclaimer={handleShowDisclaimer} />
+      <Sidebar activePage={activePage} onPageChange={setActivePage} />
 
-      {/* Main Area */}
       <div className="flex-1 flex flex-col gap-4 p-4 overflow-hidden min-h-0">
-        {/* Config Panel - Primary Action Area (Always Expanded) */}
-        <div className="flex-shrink-0">
-          <CrawlerConfigPanel />
-        </div>
-
-        {/* Console - Collapsible Terminal */}
-        <MainContent />
+        {activePage === 'dashboard' ? (
+          <>
+            <div className="flex-shrink-0">
+              <CrawlerConfigPanel />
+            </div>
+            <MainContent />
+          </>
+        ) : (
+          <XiaohongshuPage />
+        )}
       </div>
 
-      {/* Toast notifications - Theme-aware style */}
       <Toaster
         position="top-right"
         toastOptions={{

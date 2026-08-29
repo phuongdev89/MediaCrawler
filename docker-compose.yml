@@ -1,0 +1,52 @@
+services:
+  mariadb:
+    image: mariadb:11
+    container_name: mc_mariadb
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MYSQL_DB_PWD:-123456}
+      MARIADB_DATABASE: ${MYSQL_DB_NAME:-media_crawler}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: mc_phpmyadmin
+    restart: unless-stopped
+    environment:
+      PMA_HOST: mariadb
+      PMA_PORT: 3306
+    ports:
+      - "8081:80"
+    depends_on:
+      - mariadb
+
+  redis:
+    image: redis:7-alpine
+    container_name: mc_redis
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_DB_PWD:-123456}
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  phpredisadmin:
+    image: erikdubbelboer/phpredisadmin:latest
+    container_name: mc_phpredisadmin
+    restart: unless-stopped
+    environment:
+      REDIS_1_HOST: redis
+      REDIS_1_PORT: 6379
+      REDIS_1_AUTH: ${REDIS_DB_PWD:-123456}
+    ports:
+      - "8082:80"
+    depends_on:
+      - redis
+
+volumes:
+  mariadb_data:
+  redis_data:

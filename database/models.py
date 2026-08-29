@@ -211,6 +211,10 @@ class XhsNote(Base):
     note_url = Column(Text, comment='笔记URL')
     source_keyword = Column(Text, default='', comment='来源关键词')
     xsec_token = Column(Text, comment='Xsec Token')
+    title_vi = Column(Text, comment='笔记标题(越南语)')
+    desc_vi = Column(Text, comment='笔记描述(越南语)')
+    tag_list_vi = Column(Text, comment='标签列表(越南语)')
+    is_translated = Column(Integer, default=0, index=True, comment='是否已翻译(0:未翻译, 1:已翻译)')
 
 class XhsNoteComment(Base):
     __tablename__ = 'xhs_note_comment'

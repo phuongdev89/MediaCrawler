@@ -79,15 +79,21 @@ function KeywordInput({ value, onChange, placeholder, disabled }: KeywordInputPr
   // 将逗号分隔的字符串转换为数组
   const keywords = value ? value.split(',').map((k) => k.trim()).filter(Boolean) : []
 
+  const flushInputValue = () => {
+    const trimmed = inputValue.trim()
+    if (trimmed) {
+      if (!keywords.includes(trimmed)) {
+        const newKeywords = [...keywords, trimmed]
+        onChange(newKeywords.join(','))
+      }
+      setInputValue('')
+    }
+  }
+
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.preventDefault()
-      const trimmed = inputValue.trim()
-      if (trimmed && !keywords.includes(trimmed)) {
-        const newKeywords = [...keywords, trimmed]
-        onChange(newKeywords.join(','))
-        setInputValue('')
-      }
+      flushInputValue()
     }
   }
 
@@ -102,6 +108,7 @@ function KeywordInput({ value, onChange, placeholder, disabled }: KeywordInputPr
         value={inputValue}
         onChange={(e) => setInputValue(e.target.value)}
         onKeyDown={handleKeyDown}
+        onBlur={flushInputValue}
         placeholder={placeholder}
         disabled={disabled}
         className="h-9 text-xs"

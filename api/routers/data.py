@@ -23,6 +23,11 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
+from sqlalchemy import select, func
+
+import config
+from database.db_session import get_session
+from database.models import XhsNote, XhsNoteComment
 
 router = APIRouter(prefix="/data", tags=["data"])
 
@@ -56,6 +61,87 @@ def get_file_info(file_path: Path) -> dict:
         "record_count": record_count,
         "type": file_path.suffix[1:] if file_path.suffix else "unknown"
     }
+
+
+@router.get("/xhs/posts")
+async def get_xhs_posts(limit: int = 1000, page: int = 1):
+    """Get XHS posts directly from DB."""
+    async with get_session() as session:
+        if not session:
+            return {"data": [], "total": 0, "source": "db"}
+
+        count_stmt = select(func.count(XhsNote.id))
+        total_res = await session.execute(count_stmt)
+        total = total_res.scalar() or 0
+
+        stmt = select(XhsNote).order_by(XhsNote.last_modify_ts.desc()).offset((page - 1) * limit).limit(limit)
+        res = await session.execute(stmt)
+        notes = res.scalars().all()
+
+        data = []
+        for n in notes:
+            item = {
+                "note_id": n.note_id,
+                "title": n.title,
+                "title_vi": n.title_vi,
+                "desc": n.desc,
+                "desc_vi": n.desc_vi,
+                "tag_list": n.tag_list,
+                "tag_list_vi": n.tag_list_vi,
+                "type": n.type,
+                "nickname": n.nickname,
+                "creator_hash": n.creator_hash,
+                "liked_count": n.liked_count,
+                "collected_count": n.collected_count,
+                "comment_count": n.comment_count,
+                "share_count": n.share_count,
+                "source_keyword": n.source_keyword,
+                "time": n.time,
+                "last_modify_ts": n.last_modify_ts,
+                "image_list": n.image_list,
+                "video_url": n.video_url,
+                "is_translated": n.is_translated or 0,
+                "note_url": n.note_url,
+            }
+            data.append(item)
+        return {"data": data, "total": total, "source": "db"}
+
+
+@router.get("/xhs/comments")
+async def get_xhs_comments(note_id: Optional[str] = None, limit: int = 10000, page: int = 1):
+    """Get XHS comments directly from DB."""
+    async with get_session() as session:
+        if not session:
+            return {"data": [], "total": 0, "source": "db"}
+
+        count_stmt = select(func.count(XhsNoteComment.id))
+        stmt = select(XhsNoteComment).order_by(XhsNoteComment.last_modify_ts.desc())
+        if note_id:
+            count_stmt = count_stmt.where(XhsNoteComment.note_id == note_id)
+            stmt = stmt.where(XhsNoteComment.note_id == note_id)
+
+        total_res = await session.execute(count_stmt)
+        total = total_res.scalar() or 0
+
+        res = await session.execute(stmt.offset((page - 1) * limit).limit(limit))
+        comments = res.scalars().all()
+
+        data = []
+        for c in comments:
+            data.append({
+                "comment_id": c.comment_id,
+                "create_time": c.create_time,
+                "note_id": c.note_id,
+                "content": c.content,
+                "creator_hash": c.creator_hash,
+                "nickname": c.nickname,
+                "sub_comment_count": c.sub_comment_count,
+                "pictures": c.pictures,
+                "parent_comment_id": c.parent_comment_id,
+                "last_modify_ts": c.last_modify_ts,
+                "like_count": c.like_count,
+            })
+        return {"data": data, "total": total, "source": "db"}
 
 
 @router.get("/files")

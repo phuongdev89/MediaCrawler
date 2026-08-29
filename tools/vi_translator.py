@@ -1,0 +1,297 @@
+# -*- coding: utf-8 -*-
+"""Background thread that translates content to Vietnamese using OpenAI.
+Supports:
+1. JSON files in data/
+2. Database records (MySQL / SQLite / PostgreSQL) when is_translated = 0 (e.g. xhs_note).
+Rotates between models defined in OPENAI_MODELS (comma-separated)."""
+
+from __future__ import annotations
+
+import asyncio
+import itertools
+import json
+import logging
+import os
+import threading
+import time
+from pathlib import Path
+from typing import Any
+
+from sqlalchemy import select
+
+import config
+from database.db_session import get_session
+from database.models import XhsNote
+
+logger = logging.getLogger(__name__)
+
+# --- config -----------------------------------------------------------------
+SCAN_INTERVAL = 10  # seconds between scans
+DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+BATCH_SIZE = 20  # items per API call
+
+CONTENT_FIELDS = ("title", "desc", "tag_list", "source_keyword")
+COMMENT_FIELDS = ("content",)
+
+_model_cycle: itertools.cycle | None = None
+_model_cycle_lock = threading.Lock()
+
+
+# --- model rotation --------------------------------------------------------
+
+def _get_models() -> list[str]:
+    raw = os.getenv("OPENAI_MODELS", os.getenv("OPENAI_MODEL", "gpt-4.1-mini"))
+    models = [m.strip() for m in raw.split(",") if m.strip()]
+    return models if models else ["gpt-4.1-mini"]
+
+
+def _get_next_model() -> str:
+    global _model_cycle
+    with _model_cycle_lock:
+        if _model_cycle is None:
+            _model_cycle = itertools.cycle(_get_models())
+        return next(_model_cycle)
+
+
+# --- translation via OpenAI ------------------------------------------------
+
+def _translate_batch(texts: list[str]) -> list[str]:
+    """Translate a list of Chinese texts to Vietnamese using the next rotated OpenAI model."""
+    try:
+        from openai import OpenAI
+    except ImportError:
+        logger.error("[ViTranslator] openai package not installed")
+        raise
+
+    api_key = os.getenv("OPENAI_API_KEY", "")
+    base_url = os.getenv("OPENAI_BASE_URL", None)
+    if base_url and not base_url.endswith("/v1") and not base_url.endswith("/v1/"):
+        # Append /v1 for typical OpenAI compatible endpoints if not present to avoid returning web html
+        base_url = base_url.rstrip("/") + "/v1"
+
+    if not api_key:
+        raise RuntimeError("OPENAI_API_KEY not set in environment / .env")
+
+    client_kwargs: dict[str, Any] = {"api_key": api_key}
+    if base_url:
+        client_kwargs["base_url"] = base_url
+
+    client = OpenAI(**client_kwargs)
+    model = _get_next_model()
+    logger.info("[ViTranslator] Translating %d items using model: %s", len(texts), model)
+
+    numbered = "\n".join(f"{i+1}. {t}" for i, t in enumerate(texts))
+    prompt = (
+        "Translate the following Chinese texts to Vietnamese. "
+        "Keep the same numbered format. Only output the translations, "
+        "one per line with the number prefix. Preserve emoji and hashtag markers like [话题].\n\n"
+        f"{numbered}"
+    )
+
+    resp = client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": "You are a Chinese-to-Vietnamese translator. Translate accurately and naturally."},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0.3,
+    )
+
+    if isinstance(resp, str):
+        raw = resp
+    else:
+        raw = resp.choices[0].message.content or ""
+    lines = [l.strip() for l in raw.strip().splitlines() if l.strip()]
+
+    result: list[str] = []
+    for line in lines:
+        dot_pos = line.find(".")
+        if dot_pos != -1 and line[:dot_pos].strip().isdigit():
+            result.append(line[dot_pos + 1:].strip())
+        else:
+            result.append(line)
+    return result
+
+
+def _translate_all(texts: list[str]) -> list[str]:
+    all_translated: list[str] = []
+    for i in range(0, len(texts), BATCH_SIZE):
+        batch = texts[i : i + BATCH_SIZE]
+        translated = _translate_batch(batch)
+        while len(translated) < len(batch):
+            translated.append(batch[len(translated)])
+        all_translated.extend(translated[:len(batch)])
+    return all_translated
+
+
+# --- database translation ---------------------------------------------------
+
+async def _translate_xhs_db_pass() -> int:
+    """Find xhs_note records with is_translated = 0 and translate them."""
+    async with get_session() as session:
+        if not session:
+            return 0
+        stmt = select(XhsNote).where(XhsNote.is_translated == 0).limit(BATCH_SIZE)
+        res = await session.execute(stmt)
+        notes = res.scalars().all()
+        if not notes:
+            return 0
+
+        logger.info("[ViTranslator] Found %d untranslated XHS notes in DB", len(notes))
+        for note in notes:
+            texts = []
+            fields_present = []
+            if note.title and note.title.strip():
+                texts.append(note.title)
+                fields_present.append("title")
+            if note.desc and note.desc.strip():
+                texts.append(note.desc)
+                fields_present.append("desc")
+            if note.tag_list and note.tag_list.strip():
+                texts.append(note.tag_list)
+                fields_present.append("tag_list")
+
+            if texts:
+                translations = _translate_all(texts)
+                for field_name, translated_text in zip(fields_present, translations):
+                    if field_name == "title":
+                        note.title_vi = translated_text
+                    elif field_name == "desc":
+                        note.desc_vi = translated_text
+                    elif field_name == "tag_list":
+                        note.tag_list_vi = translated_text
+
+            note.is_translated = 1
+
+        await session.commit()
+        return len(notes)
+
+
+# --- JSON file translation --------------------------------------------------
+
+def _is_comment_file(name: str) -> bool:
+    return "comment" in name.lower()
+
+
+def _fields_for(filename: str) -> tuple[str, ...]:
+    return COMMENT_FIELDS if _is_comment_file(filename) else CONTENT_FIELDS
+
+
+def _needs_translation(json_path: Path) -> bool:
+    vi_path = json_path.with_suffix("").with_suffix(".vi.json")
+    return not vi_path.exists()
+
+
+def _vi_path(json_path: Path) -> Path:
+    return json_path.with_suffix("").with_suffix(".vi.json")
+
+
+def _collect_texts(items: list[dict], fields: tuple[str, ...]) -> list[str]:
+    texts: list[str] = []
+    for item in items:
+        for f in fields:
+            v = item.get(f, "")
+            if isinstance(v, str) and v.strip():
+                texts.append(v)
+    return texts
+
+
+def _apply_translations(
+    items: list[dict], fields: tuple[str, ...], translations: list[str]
+) -> list[dict]:
+    idx = 0
+    result = []
+    for item in items:
+        new_item = dict(item)
+        for f in fields:
+            v = item.get(f, "")
+            if isinstance(v, str) and v.strip():
+                if idx < len(translations):
+                    new_item[f] = translations[idx]
+                idx += 1
+        result.append(new_item)
+    return result
+
+
+def _scan_and_translate_files() -> None:
+    if not DATA_DIR.exists():
+        return
+
+    json_files = sorted(DATA_DIR.rglob("*.json"))
+    candidates = [
+        p for p in json_files
+        if not p.name.endswith(".vi.json") and _needs_translation(p)
+    ]
+
+    for json_path in candidates:
+        try:
+            logger.info("[ViTranslator] Translating file %s", json_path)
+            with open(json_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            if not isinstance(data, list) or not data:
+                continue
+
+            fields = _fields_for(json_path.name)
+            texts = _collect_texts(data, fields)
+
+            if not texts:
+                translated_data = data
+            else:
+                translations = _translate_all(texts)
+                translated_data = _apply_translations(data, fields, translations)
+
+            out_path = _vi_path(json_path)
+            with open(out_path, "w", encoding="utf-8") as f:
+                json.dump(translated_data, f, ensure_ascii=False, indent=4)
+
+            logger.info("[ViTranslator] Saved %s", out_path)
+        except Exception:
+            logger.exception("[ViTranslator] Error translating %s", json_path)
+
+
+# --- scan loop --------------------------------------------------------------
+
+async def _async_scan_loop() -> None:
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        pass
+
+    logger.info(
+        "[ViTranslator] Thread started, models=%s, scanning every %ds",
+        _get_models(),
+        SCAN_INTERVAL,
+    )
+    while True:
+        try:
+            # 1. DB mode translation in single persistent loop
+            if config.SAVE_DATA_OPTION in ("db", "mysql", "sqlite", "postgres"):
+                try:
+                    await _translate_xhs_db_pass()
+                except Exception:
+                    logger.exception("[ViTranslator] Error during DB translation pass")
+
+            # 2. File mode translation
+            _scan_and_translate_files()
+        except Exception:
+            logger.exception("[ViTranslator] Unhandled error in scan loop")
+
+        await asyncio.sleep(SCAN_INTERVAL)
+
+
+def _loop() -> None:
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(_async_scan_loop())
+    finally:
+        loop.close()
+
+
+def start() -> threading.Thread:
+    """Start the translator daemon thread."""
+    t = threading.Thread(target=_loop, name="vi-translator", daemon=True)
+    t.start()
+    return t

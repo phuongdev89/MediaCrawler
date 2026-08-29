@@ -33,6 +33,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 from .routers import crawler_router, data_router, websocket_router
+from database.db import init_db
+from tools.vi_translator import start as start_vi_translator
+import config
 
 # Project root directory (used for running subprocesses like uv run main.py)
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -42,6 +45,16 @@ app = FastAPI(
     description="API for controlling MediaCrawler from WebUI",
     version="1.0.0"
 )
+
+@app.on_event("startup")
+async def on_startup():
+    # Start translator daemon thread for API server context too
+    start_vi_translator()
+    if config.SAVE_DATA_OPTION in ("db", "mysql", "sqlite", "postgres"):
+        try:
+            await init_db(config.SAVE_DATA_OPTION)
+        except Exception as e:
+            print(f"[API Startup] DB init failed: {e}")
 
 # Get webui static files directory
 WEBUI_DIR = os.path.join(os.path.dirname(__file__), "webui")

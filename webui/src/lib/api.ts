@@ -8,6 +8,10 @@ const api = axios.create({
   },
 })
 
+function encodeDataPath(path: string) {
+  return path.split(/[\\/]/).map(encodeURIComponent).join('/')
+}
+
 // Types
 export interface CrawlerConfig {
   platform: string
@@ -75,9 +79,19 @@ export const dataApi = {
   getFiles: (platform?: string, fileType?: string) =>
     api.get<{ files: DataFile[] }>('/data/files', { params: { platform, file_type: fileType } }),
   getFileContent: (path: string, limit = 100) =>
-    api.get<FilePreviewResponse>('/data/files/' + path, { params: { preview: true, limit } }),
+    api.get<FilePreviewResponse>('/data/files/' + encodeDataPath(path), {
+      params: { preview: true, limit },
+    }),
+  getXhsPostsFromDb: (limit = 1000, page = 1) =>
+    api.get<{ data: Record<string, unknown>[]; total: number; source: string }>('/data/xhs/posts', {
+      params: { limit, page },
+    }),
+  getXhsCommentsFromDb: (noteId?: string, limit = 10000, page = 1) =>
+    api.get<{ data: Record<string, unknown>[]; total: number; source: string }>('/data/xhs/comments', {
+      params: { note_id: noteId, limit, page },
+    }),
   getStats: () => api.get('/data/stats'),
-  getDownloadUrl: (path: string) => `/api/data/download/${path}`,
+  getDownloadUrl: (path: string) => `/api/data/download/${encodeDataPath(path)}`,
 }
 
 export const configApi = {

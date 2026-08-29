@@ -26,6 +26,8 @@ from config.db_config import mysql_db_config, sqlite_db_config, postgres_db_conf
 
 # Keep a cache of engines
 _engines = {}
+import threading
+_thread_local = threading.local()
 
 
 async def create_database_if_not_exists(db_type: str):
@@ -33,8 +35,12 @@ async def create_database_if_not_exists(db_type: str):
         # Connect to the server without a database
         server_url = f"mysql+asyncmy://{mysql_db_config['user']}:{mysql_db_config['password']}@{mysql_db_config['host']}:{mysql_db_config['port']}"
         engine = create_async_engine(server_url, echo=False)
-        async with engine.connect() as conn:
-            await conn.execute(text(f"CREATE DATABASE IF NOT EXISTS {mysql_db_config['db_name']}"))
+        try:
+            async with engine.connect() as conn:
+                await conn.execute(text(f"CREATE DATABASE IF NOT EXISTS {mysql_db_config['db_name']}"))
+        except Exception as e:
+            if "exists" not in str(e).lower():
+                pass
         await engine.dispose()
     elif db_type == "postgres":
         # Connect to the default 'postgres' database
@@ -54,11 +60,14 @@ def get_async_engine(db_type: str = None):
     if db_type is None:
         db_type = config.SAVE_DATA_OPTION
 
-    if db_type in _engines:
-        return _engines[db_type]
-
     if db_type in ["json", "jsonl", "csv"]:
         return None
+
+    if not hasattr(_thread_local, "engines"):
+        _thread_local.engines = {}
+
+    if db_type in _thread_local.engines:
+        return _thread_local.engines[db_type]
 
     if db_type == "sqlite":
         db_url = f"sqlite+aiosqlite:///{sqlite_db_config['db_path']}"
@@ -70,8 +79,29 @@ def get_async_engine(db_type: str = None):
         raise ValueError(f"Unsupported database type: {db_type}")
 
     engine = create_async_engine(db_url, echo=False)
-    _engines[db_type] = engine
+    _thread_local.engines[db_type] = engine
     return engine
+
+
+async def _ensure_xhs_note_vi_columns(conn):
+    """Ensure title_vi, desc_vi, tag_list_vi, is_translated exist in xhs_note table."""
+    try:
+        query_cols = text("SHOW COLUMNS FROM xhs_note LIKE 'is_translated'")
+        res = await conn.execute(query_cols)
+        if not res.first():
+            cols_to_add = [
+                ("title_vi", "TEXT COMMENT '笔记标题(越南语)'"),
+                ("desc_vi", "TEXT COMMENT '笔记描述(越南语)'"),
+                ("tag_list_vi", "TEXT COMMENT '标签列表(越南语)'"),
+                ("is_translated", "INT DEFAULT 0 COMMENT '是否已翻译(0:未翻译, 1:已翻译)'"),
+            ]
+            for col_name, col_def in cols_to_add:
+                try:
+                    await conn.execute(text(f"ALTER TABLE xhs_note ADD COLUMN {col_name} {col_def}"))
+                except Exception:
+                    pass
+    except Exception:
+        pass
 
 
 async def create_tables(db_type: str = None):
@@ -82,6 +112,8 @@ async def create_tables(db_type: str = None):
     if engine:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+            if db_type in ("db", "mysql"):
+                await _ensure_xhs_note_vi_columns(conn)
 
 
 @asynccontextmanager
