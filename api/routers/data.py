@@ -21,8 +21,9 @@ import json
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse
+import httpx
+from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import select, func
 
 import config
@@ -314,3 +315,28 @@ async def get_data_stats():
                 continue
 
     return stats
+
+
+ALLOWED_MEDIA_HOSTS = {"sns-video-bd.xhscdn.com", "sns-video-hw.xhscdn.com", "sns-video-al.xhscdn.com",
+                       "sns-img-bd.xhscdn.com", "sns-img-hw.xhscdn.com", "sns-img-al.xhscdn.com",
+                       "ci.xiaohongshu.com", "sns-webpic-qc.xhscdn.com"}
+
+
+@router.get("/media-proxy")
+async def media_proxy(url: str = Query(...)):
+    """Proxy XHS media to bypass CORS."""
+    from urllib.parse import urlparse
+    parsed = urlparse(url)
+    if parsed.hostname not in ALLOWED_MEDIA_HOSTS:
+        raise HTTPException(status_code=403, detail="Host not allowed")
+
+    async with httpx.AsyncClient(follow_redirects=True, timeout=30) as client:
+        resp = await client.get(url, headers={"Referer": "https://www.xiaohongshu.com/"})
+        if resp.status_code != 200:
+            raise HTTPException(status_code=resp.status_code, detail="Upstream error")
+        content_type = resp.headers.get("content-type", "application/octet-stream")
+        return StreamingResponse(
+            iter([resp.content]),
+            media_type=content_type,
+            headers={"Cache-Control": "public, max-age=86400"},
+        )

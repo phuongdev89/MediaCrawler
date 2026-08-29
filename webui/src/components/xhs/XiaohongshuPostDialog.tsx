@@ -92,7 +92,9 @@ export function XiaohongshuPostDialog({
   if (!post) return null
 
   const isVideo = post.type === 'video' && !!post.video_url
-  const videoSrc = isVideo ? splitList(post.video_url)[0]?.replace(/^http:/, 'https:') : undefined
+  const videoSrc = isVideo
+    ? `/api/data/media-proxy?url=${encodeURIComponent(splitList(post.video_url)[0] ?? '')}`
+    : undefined
   const activeImage = images[activeImageIndex] ?? images[0]
   const hasMultipleImages = images.length > 1
 
@@ -121,7 +123,6 @@ export function XiaohongshuPostDialog({
                 src={videoSrc}
                 controls
                 playsInline
-                crossOrigin="anonymous"
                 className="relative z-10 max-h-full max-w-full object-contain"
                 poster={activeImage}
               />
