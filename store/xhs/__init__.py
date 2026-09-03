@@ -105,6 +105,12 @@ async def update_xhs_note(note_item: Dict):
             img.update({'url': img.get('url_default')})
 
     video_url = ','.join(get_video_url_arr(note_item))
+    # For video notes, ensure image_list contains the cover image if image_list is empty
+    if note_item.get('type') == 'video' and not image_list:
+        cover_dict = note_item.get('cover', {})
+        cover_url = cover_dict.get('url_default') or cover_dict.get('url', '')
+        if cover_url:
+            image_list = [{'url': cover_url}]
 
     local_db_item = {
         "note_id": note_item.get("note_id"),  # Note ID

@@ -31,6 +31,7 @@ type SortKey =
   | 'liked_count'
   | 'collected_count'
   | 'comment_count'
+  | 'time'
   | 'last_modify_ts'
 type SortDirection = 'asc' | 'desc'
 
@@ -50,7 +51,7 @@ function metricValue(value?: string) {
 }
 
 function dateValue(post: XhsPost) {
-  return post.last_modify_ts ?? post.time ?? 0
+  return post.time ?? post.last_modify_ts ?? 0
 }
 
 function formatXhsDate(value?: number) {
@@ -74,7 +75,7 @@ function getPostThumbnail(post: XhsPost): string | null {
 export function XiaohongshuPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedPost, setSelectedPost] = useState<XhsPost | null>(null)
-  const [sortKey, setSortKey] = useState<SortKey>('last_modify_ts')
+  const [sortKey, setSortKey] = useState<SortKey>('time')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(12)
@@ -157,7 +158,7 @@ export function XiaohongshuPage() {
             ? commentCountByNote[b.note_id] || metricValue(b.comment_count)
             : metricValue(b[sortKey])
         result = aValue - bValue
-      } else if (sortKey === 'last_modify_ts') {
+      } else if (sortKey === 'time' || sortKey === 'last_modify_ts') {
         result = dateValue(a) - dateValue(b)
       } else {
         result = compareText(a[sortKey], b[sortKey])
@@ -357,7 +358,7 @@ export function XiaohongshuPage() {
                       </SortHeader>
                     </th>
                     <th className="px-4 py-3 text-left">
-                      <SortHeader keyName="last_modify_ts">Updated</SortHeader>
+                      <SortHeader keyName="time">Time</SortHeader>
                     </th>
                   </tr>
                 </thead>
@@ -424,7 +425,7 @@ export function XiaohongshuPage() {
                         {commentCountByNote[post.note_id] || post.comment_count || '0'}
                       </td>
                       <td className="px-4 py-3 text-xs text-cyber-text-muted font-mono align-top whitespace-nowrap">
-                        {formatXhsDate(post.last_modify_ts ?? post.time)}
+                        {formatXhsDate(post.time ?? post.last_modify_ts)}
                       </td>
                     </tr>
                   ))}
