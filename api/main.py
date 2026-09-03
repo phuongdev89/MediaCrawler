@@ -26,6 +26,10 @@ import os
 import sys
 import subprocess
 from pathlib import Path
+
+from dotenv import load_dotenv
+load_dotenv()  # load .env BEFORE anything reads env vars
+
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -35,6 +39,7 @@ from fastapi.responses import FileResponse
 from .routers import crawler_router, data_router, websocket_router
 from database.db import init_db
 from tools.vi_translator import start as start_vi_translator
+from tools.media_downloader import start as start_media_downloader
 import config
 
 # Project root directory (used for running subprocesses like uv run main.py)
@@ -50,6 +55,8 @@ app = FastAPI(
 async def on_startup():
     # Start translator daemon thread for API server context too
     start_vi_translator()
+    # Start media downloader daemon thread
+    start_media_downloader()
     if config.SAVE_DATA_OPTION in ("db", "mysql", "sqlite", "postgres"):
         try:
             await init_db(config.SAVE_DATA_OPTION)
@@ -62,12 +69,7 @@ WEBUI_DIR = os.path.join(os.path.dirname(__file__), "webui")
 # CORS configuration - allow frontend dev server access
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",  # Vite dev server
-        "http://localhost:3000",  # Backup port
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:3000",
-    ],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -158,6 +160,22 @@ async def check_environment():
             "message": "Environment check error",
             "error": f"{type(e).__name__}: {str(e) or 'Unknown'}"
         }
+
+
+@app.get("/api/config/defaults")
+async def get_config_defaults():
+    """Return current backend config defaults so the dashboard can pre-fill them."""
+    return {
+        "platform": config.PLATFORM,
+        "login_type": config.LOGIN_TYPE,
+        "crawler_type": config.CRAWLER_TYPE,
+        "keywords": config.KEYWORDS,
+        "start_page": config.START_PAGE,
+        "enable_comments": config.ENABLE_GET_COMMENTS,
+        "enable_sub_comments": config.ENABLE_GET_SUB_COMMENTS,
+        "save_option": config.SAVE_DATA_OPTION,
+        "headless": config.HEADLESS,
+    }
 
 
 @app.get("/api/config/platforms")

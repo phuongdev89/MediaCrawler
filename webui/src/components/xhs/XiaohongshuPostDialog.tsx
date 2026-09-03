@@ -78,7 +78,15 @@ export function XiaohongshuPostDialog({
 }: XiaohongshuPostDialogProps) {
   const [activeImageIndex, setActiveImageIndex] = useState(0)
 
-  const images = useMemo(() => splitList(post?.image_list), [post?.image_list])
+  const images = useMemo(() => {
+    // Prefer locally downloaded images, fallback to CDN URLs (proxied)
+    if (post?.local_images && post.local_images.length > 0) {
+      return post.local_images
+    }
+    return splitList(post?.image_list).map(
+      (url) => `/api/data/media-proxy?url=${encodeURIComponent(url)}`
+    )
+  }, [post?.local_images, post?.image_list])
   const tags = useMemo(() => {
     // Attempt to read Vietnamese tags, fall back to standard tags
     const rawTags = post?.tag_list_vi || post?.tag_list
@@ -93,7 +101,9 @@ export function XiaohongshuPostDialog({
 
   const isVideo = post.type === 'video' && !!post.video_url
   const videoSrc = isVideo
-    ? `/api/data/media-proxy?url=${encodeURIComponent(splitList(post.video_url)[0] ?? '')}`
+    ? (post.local_videos && post.local_videos.length > 0
+        ? post.local_videos[0]
+        : `/api/data/media-proxy?url=${encodeURIComponent(splitList(post.video_url)[0] ?? '')}`)
     : undefined
   const activeImage = images[activeImageIndex] ?? images[0]
   const hasMultipleImages = images.length > 1

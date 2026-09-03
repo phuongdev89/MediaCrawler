@@ -81,6 +81,9 @@ async def get_xhs_posts(limit: int = 1000, page: int = 1):
 
         data = []
         for n in notes:
+            # Check for locally downloaded media
+            local_images = _list_local_media("xhs", "images", n.note_id) if n.note_id else []
+            local_videos = _list_local_media("xhs", "videos", n.note_id) if n.note_id else []
             item = {
                 "note_id": n.note_id,
                 "title": n.title,
@@ -101,6 +104,8 @@ async def get_xhs_posts(limit: int = 1000, page: int = 1):
                 "last_modify_ts": n.last_modify_ts,
                 "image_list": n.image_list,
                 "video_url": n.video_url,
+                "local_images": local_images,
+                "local_videos": local_videos,
                 "is_translated": n.is_translated or 0,
                 "note_url": n.note_url,
             }
@@ -317,9 +322,47 @@ async def get_data_stats():
     return stats
 
 
+import mimetypes
+
 ALLOWED_MEDIA_HOSTS = {"sns-video-bd.xhscdn.com", "sns-video-hw.xhscdn.com", "sns-video-al.xhscdn.com",
                        "sns-img-bd.xhscdn.com", "sns-img-hw.xhscdn.com", "sns-img-al.xhscdn.com",
                        "ci.xiaohongshu.com", "sns-webpic-qc.xhscdn.com"}
+
+
+def _list_local_media(platform: str, media_type: str, note_id: str) -> list[str]:
+    """List local media files for a note. Returns API-relative paths."""
+    media_dir = DATA_DIR / platform / media_type / note_id
+    if not media_dir.is_dir():
+        return []
+    files = sorted(media_dir.iterdir())
+    return [
+        f"/api/data/local-media/{platform}/{media_type}/{note_id}/{f.name}"
+        for f in files if f.is_file()
+    ]
+
+
+@router.get("/local-media/{platform}/{media_type}/{note_id}/{filename}")
+async def serve_local_media(platform: str, media_type: str, note_id: str, filename: str):
+    """Serve locally downloaded media files (images/videos)."""
+    if media_type not in ("images", "videos"):
+        raise HTTPException(status_code=400, detail="media_type must be images or videos")
+
+    full_path = (DATA_DIR / platform / media_type / note_id / filename).resolve()
+    # Security: must stay inside DATA_DIR
+    try:
+        full_path.relative_to(DATA_DIR.resolve())
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    if not full_path.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    content_type = mimetypes.guess_type(str(full_path))[0] or "application/octet-stream"
+    return FileResponse(
+        path=full_path,
+        media_type=content_type,
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
 
 
 @router.get("/media-proxy")

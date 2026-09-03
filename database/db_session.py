@@ -94,6 +94,7 @@ async def _ensure_xhs_note_vi_columns(conn):
                 ("desc_vi", "TEXT COMMENT '笔记描述(越南语)'"),
                 ("tag_list_vi", "TEXT COMMENT '标签列表(越南语)'"),
                 ("is_translated", "INT DEFAULT 0 COMMENT '是否已翻译(0:未翻译, 1:已翻译)'"),
+                ("media_downloaded", "INT DEFAULT 0 COMMENT '媒体下载状态(0:未下载, 1:已下载)'"),
             ]
             for col_name, col_def in cols_to_add:
                 try:
@@ -102,6 +103,19 @@ async def _ensure_xhs_note_vi_columns(conn):
                     pass
     except Exception:
         pass
+
+
+async def _ensure_sqlite_columns(conn):
+    """Add missing columns to existing SQLite tables (ALTER TABLE ADD COLUMN is safe in SQLite)."""
+    migrations = [
+        ("xhs_note", "media_downloaded", "INTEGER DEFAULT 0"),
+    ]
+    for table, col, col_def in migrations:
+        try:
+            await conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {col_def}"))
+        except Exception:
+            # Column already exists
+            pass
 
 
 async def create_tables(db_type: str = None):
@@ -114,6 +128,8 @@ async def create_tables(db_type: str = None):
             await conn.run_sync(Base.metadata.create_all)
             if db_type in ("db", "mysql"):
                 await _ensure_xhs_note_vi_columns(conn)
+            if db_type == "sqlite":
+                await _ensure_sqlite_columns(conn)
 
 
 @asynccontextmanager

@@ -23,6 +23,8 @@ export interface XhsPost {
   note_url?: string
   source_keyword?: string
   xsec_token?: string
+  local_images?: string[]
+  local_videos?: string[]
 }
 
 export interface XhsComment {

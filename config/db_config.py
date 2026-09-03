@@ -35,7 +35,6 @@ mysql_db_config = {
     "db_name": MYSQL_DB_NAME,
 }
 
-
 # redis config
 REDIS_DB_HOST = os.getenv("REDIS_DB_HOST", "127.0.0.1")  # your redis host
 REDIS_DB_PWD = os.getenv("REDIS_DB_PWD", "123456")  # your redis password
@@ -47,7 +46,7 @@ CACHE_TYPE_REDIS = "redis"
 CACHE_TYPE_MEMORY = "memory"
 
 # sqlite config
-SQLITE_DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "database", "sqlite_tables.db")
+SQLITE_DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "sqlite_tables.db")
 
 sqlite_db_config = {
     "db_path": SQLITE_DB_PATH

@@ -215,6 +215,7 @@ class XhsNote(Base):
     desc_vi = Column(Text, comment='笔记描述(越南语)')
     tag_list_vi = Column(Text, comment='标签列表(越南语)')
     is_translated = Column(Integer, default=0, index=True, comment='是否已翻译(0:未翻译, 1:已翻译)')
+    media_downloaded = Column(Integer, default=0, index=True, comment='媒体下载状态(0:未下载, 1:已下载)')
 
 class XhsNoteComment(Base):
     __tablename__ = 'xhs_note_comment'

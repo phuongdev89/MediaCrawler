@@ -97,3 +97,17 @@ export function useConfigOptions() {
     staleTime: Infinity,
   })
 }
+
+export function useConfigDefaults() {
+  const updateConfig = useCrawlerStore((state) => state.updateConfig)
+
+  return useQuery({
+    queryKey: ['configDefaults'],
+    queryFn: async () => {
+      const { data } = await configApi.getDefaults()
+      updateConfig(data)
+      return data
+    },
+    staleTime: Infinity,
+  })
+}

@@ -61,6 +61,15 @@ function compareText(a?: string, b?: string) {
   return String(a ?? '').localeCompare(String(b ?? ''), 'zh-CN')
 }
 
+function getPostThumbnail(post: XhsPost): string | null {
+  // Prefer local image
+  if (post.local_images && post.local_images.length > 0) return post.local_images[0]
+  // Fallback: proxy CDN URL
+  const images = post.image_list?.split(',').map((s) => s.trim()).filter(Boolean) ?? []
+  if (images.length > 0) return `/api/data/media-proxy?url=${encodeURIComponent(images[0])}`
+  return null
+}
+
 export function XiaohongshuPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedPost, setSelectedPost] = useState<XhsPost | null>(null)
@@ -339,16 +348,33 @@ export function XiaohongshuPage() {
                       className="border-b border-cyber-border-subtle hover:bg-cyber-neon-cyan/5 cursor-pointer transition-colors"
                     >
                       <td className="px-4 py-3 align-top">
-                        <div className="font-medium text-cyber-text-primary line-clamp-1 flex items-center gap-1.5">
-                          {post.title_vi || post.title || 'Untitled note'}
-                          {post.is_translated === 1 && (
-                            <Badge variant="outline" className="text-[9px] h-3.5 px-1 border-cyber-neon-green text-cyber-neon-green bg-cyber-neon-green/5">
-                              VI
-                            </Badge>
-                          )}
-                        </div>
-                        <div className="text-xs text-cyber-text-muted mt-1 line-clamp-2">
-                          {post.desc_vi || post.desc || post.note_id}
+                        <div className="flex items-start gap-3">
+                          {(() => {
+                            const thumb = getPostThumbnail(post)
+                            return thumb ? (
+                              <img
+                                src={thumb}
+                                alt=""
+                                className="w-12 h-12 rounded-md object-cover border border-cyber-border-subtle flex-shrink-0"
+                                loading="lazy"
+                              />
+                            ) : (
+                              <div className="w-12 h-12 rounded-md bg-cyber-bg-tertiary border border-cyber-border-subtle flex-shrink-0" />
+                            )
+                          })()}
+                          <div className="min-w-0">
+                            <div className="font-medium text-cyber-text-primary line-clamp-1 flex items-center gap-1.5">
+                              {post.title_vi || post.title || 'Untitled note'}
+                              {post.is_translated === 1 && (
+                                <Badge variant="outline" className="text-[9px] h-3.5 px-1 border-cyber-neon-green text-cyber-neon-green bg-cyber-neon-green/5">
+                                  VI
+                                </Badge>
+                              )}
+                            </div>
+                            <div className="text-xs text-cyber-text-muted mt-1 line-clamp-2">
+                              {post.desc_vi || post.desc || post.note_id}
+                            </div>
+                          </div>
                         </div>
                       </td>
                       <td className="px-4 py-3 align-top">

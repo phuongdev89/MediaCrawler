@@ -102,6 +102,7 @@ export const configApi = {
       crawler_types: ConfigOption[]
       save_options: ConfigOption[]
     }>('/config/options'),
+  getDefaults: () => api.get<CrawlerConfig>('/config/defaults'),
 }
 
 export interface EnvCheckResult {

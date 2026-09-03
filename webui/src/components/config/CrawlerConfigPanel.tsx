@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Button } from '@/components/ui/button'
 import { useCrawlerStore } from '@/store/crawlerStore'
-import { usePlatforms, useConfigOptions, useStartCrawler, useStopCrawler } from '@/hooks/useCrawler'
+import { usePlatforms, useConfigOptions, useStartCrawler, useStopCrawler, useConfigDefaults } from '@/hooks/useCrawler'
 import { ParsedIdList } from './ParsedIdList'
 
 type SectionProps = {
@@ -148,6 +148,7 @@ export function CrawlerConfigPanel() {
   const { data: options } = useConfigOptions()
   const { mutate: startCrawler, isPending: isStarting } = useStartCrawler()
   const { mutate: stopCrawler, isPending: isStopping } = useStopCrawler()
+  useConfigDefaults() // load backend defaults into store on mount
 
   const isDisabled = status === 'running' || status === 'stopping'
   const isRunning = status === 'running'

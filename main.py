@@ -20,6 +20,9 @@
 import sys
 import io
 
+from dotenv import load_dotenv
+load_dotenv()  # load .env before anything reads env vars
+
 # Force UTF-8 encoding for stdout/stderr to prevent encoding errors
 # when outputting Chinese characters in non-UTF-8 terminals
 if sys.stdout and hasattr(sys.stdout, 'buffer'):
@@ -45,6 +48,7 @@ from media_platform.xhs import XiaoHongShuCrawler
 from media_platform.zhihu import ZhihuCrawler
 from tools.async_file_writer import AsyncFileWriter
 from tools.vi_translator import start as start_vi_translator
+from tools.media_downloader import start as start_media_downloader
 from var import crawler_type_var
 
 
@@ -103,6 +107,8 @@ async def main() -> None:
 
     # Start Vietnamese translation daemon thread
     start_vi_translator()
+    # Start media downloader daemon thread
+    start_media_downloader()
 
     args = await cmd_arg.parse_cmd()
     if args.init_db:

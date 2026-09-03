@@ -12,6 +12,7 @@ import itertools
 import json
 import logging
 import os
+import sys
 import threading
 import time
 from pathlib import Path
@@ -23,7 +24,18 @@ import config
 from database.db_session import get_session
 from database.models import XhsNote
 
+# Ensure logger handler uses UTF-8 so Vietnamese output doesn't crash on Windows
 logger = logging.getLogger(__name__)
+if not logger.handlers:
+    _handler = logging.StreamHandler(stream=sys.stderr)
+    _handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s:%(message)s"))
+    if hasattr(_handler.stream, "reconfigure"):
+        try:
+            _handler.stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+    logger.addHandler(_handler)
+    logger.setLevel(logging.INFO)
 
 # --- config -----------------------------------------------------------------
 SCAN_INTERVAL = 10  # seconds between scans
@@ -253,12 +265,6 @@ def _scan_and_translate_files() -> None:
 # --- scan loop --------------------------------------------------------------
 
 async def _async_scan_loop() -> None:
-    try:
-        from dotenv import load_dotenv
-        load_dotenv()
-    except ImportError:
-        pass
-
     logger.info(
         "[ViTranslator] Thread started, models=%s, scanning every %ds",
         _get_models(),

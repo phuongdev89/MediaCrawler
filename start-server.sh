@@ -11,8 +11,6 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-echo "Starting Docker services..."
-docker compose up -d
 
 echo "Starting backend on http://localhost:8080 ..."
 uv run python -m api.main &
@@ -28,8 +26,6 @@ WEB_PID=$!
 echo "All services started."
 echo "Frontend:   http://localhost:5173"
 echo "Backend:    http://localhost:8080"
-echo "phpMyAdmin: http://localhost:8081"
-echo "Redis UI:   http://localhost:8082"
 echo "Press Ctrl+C to stop backend/frontend. Docker services remain running."
 
 wait -n "$API_PID" "$WEB_PID"

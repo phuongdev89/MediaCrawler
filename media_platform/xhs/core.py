@@ -481,11 +481,10 @@ class XiaoHongShuCrawler(AbstractCrawler):
         utils.logger.info("[XiaoHongShuCrawler.close] Browser context closed ...")
 
     async def get_notice_media(self, note_detail: Dict):
-        if not config.ENABLE_GET_MEIDAS:
-            utils.logger.info(f"[XiaoHongShuCrawler.get_notice_media] Crawling image mode is not enabled")
-            return
-        await self.get_note_images(note_detail)
-        await self.get_notice_video(note_detail)
+        # ponytail: media download is now handled by background thread (tools/media_downloader.py)
+        # URLs are already saved in DB (image_list, video_url columns).
+        # The daemon thread picks up notes with media_downloaded=0 and downloads asynchronously.
+        pass
 
     async def get_note_images(self, note_item: Dict):
         """Get note images. Please use get_notice_media
