@@ -18,7 +18,8 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { dataApi } from '@/lib/api'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { dataApi, configApi } from '@/lib/api'
 import { formatDateTime } from '@/lib/utils'
 import { XiaohongshuPostDialog } from './XiaohongshuPostDialog'
 import type { XhsComment, XhsPost } from './types'
@@ -33,7 +34,7 @@ type SortKey =
   | 'last_modify_ts'
 type SortDirection = 'asc' | 'desc'
 
-const pageSize = 12
+const PAGE_SIZE_OPTIONS = [10, 12, 20, 50, 100]
 
 function isXhsPost(value: Record<string, unknown>): value is XhsPost {
   return typeof value.note_id === 'string'
@@ -76,6 +77,26 @@ export function XiaohongshuPage() {
   const [sortKey, setSortKey] = useState<SortKey>('last_modify_ts')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
   const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(12)
+
+  const configDefaultsQuery = useQuery({
+    queryKey: ['configDefaults'],
+    queryFn: async () => {
+      const { data } = await configApi.getDefaults()
+      return data
+    },
+    staleTime: Infinity,
+  })
+
+  const saveOption = configDefaultsQuery.data?.save_option ?? 'db'
+  const dbLabel: Record<string, string> = {
+    sqlite: 'SQLite',
+    db: 'MySQL',
+    mysql: 'MySQL',
+    postgres: 'PostgreSQL',
+    mongodb: 'MongoDB',
+  }
+  const dbName = dbLabel[saveOption] ?? saveOption.toUpperCase()
 
   const dbPostsQuery = useQuery({
     queryKey: ['xhsPostsDb'],
@@ -254,10 +275,10 @@ export function XiaohongshuPage() {
               <h1 className="text-lg font-mono font-bold text-cyber-neon-cyan glow-text-cyan tracking-wider">
                 Xiaohongshu
               </h1>
-              <Badge variant="default">MySQL DB</Badge>
+              <Badge variant="default">{dbName} DB</Badge>
             </div>
             <p className="text-xs text-cyber-text-muted mt-1 truncate">
-              Reading from MySQL Database (xhs_note)
+              Reading from {dbName} Database (xhs_note)
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -417,6 +438,24 @@ export function XiaohongshuPage() {
                 {Math.min(currentPage * pageSize, sortedPosts.length)} of {sortedPosts.length} posts
               </div>
               <div className="flex items-center gap-2">
+                <Select
+                  value={String(pageSize)}
+                  onValueChange={(val) => {
+                    setPageSize(Number(val))
+                    setPage(1)
+                  }}
+                >
+                  <SelectTrigger className="h-8 w-[110px] text-xs font-mono bg-cyber-bg-tertiary">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PAGE_SIZE_OPTIONS.map((size) => (
+                      <SelectItem key={size} value={String(size)} className="text-xs font-mono">
+                        {size} / page
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <Button
                   variant="outline"
                   size="sm"

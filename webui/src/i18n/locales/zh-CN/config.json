@@ -56,7 +56,9 @@
     "commentExtraction": "评论抓取",
     "subComments": "子评论",
     "headlessMode": "无头模式",
-    "headlessModeHint": "无 GUI 运行浏览器"
+    "headlessModeHint": "无 GUI 运行浏览器",
+    "maxNotesCount": "最大帖子数",
+    "maxNotesCountHint": "限制爬取的帖子/视频数量"
   },
   "button": {
     "initiateScan": "开始爬虫",

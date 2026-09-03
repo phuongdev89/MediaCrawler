@@ -12,6 +12,7 @@ import itertools
 import json
 import logging
 import os
+import re
 import sys
 import threading
 import time
@@ -35,7 +36,16 @@ if not logger.handlers:
         except Exception:
             pass
     logger.addHandler(_handler)
-    logger.setLevel(logging.INFO)
+    # File handler — persists to data/vi_translator.log
+    _log_dir = Path(__file__).resolve().parent.parent / "data"
+    _log_dir.mkdir(parents=True, exist_ok=True)
+    _file_handler = logging.FileHandler(
+        _log_dir / "vi_translator.log", encoding="utf-8", delay=True,
+    )
+    _file_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    _file_handler.setLevel(logging.DEBUG)
+    logger.addHandler(_file_handler)
+    logger.setLevel(logging.DEBUG)
 
 # --- config -----------------------------------------------------------------
 SCAN_INTERVAL = 10  # seconds between scans
@@ -95,10 +105,13 @@ def _translate_batch(texts: list[str]) -> list[str]:
     numbered = "\n".join(f"{i+1}. {t}" for i, t in enumerate(texts))
     prompt = (
         "Translate the following Chinese texts to Vietnamese. "
-        "Keep the same numbered format. Only output the translations, "
-        "one per line with the number prefix. Preserve emoji and hashtag markers like [话题].\n\n"
+        "Keep the exact same numbered list format with one entry per original line. "
+        "If an item consists only of symbols, emojis, or non-Chinese characters, copy it verbatim. "
+        "Only output the translations with their line numbers. Preserve emoji and hashtag markers like [话题].\n\n"
         f"{numbered}"
     )
+
+    logger.debug("[ViTranslator] >>> PROMPT:\n%s", prompt)
 
     resp = client.chat.completions.create(
         model=model,
@@ -113,15 +126,22 @@ def _translate_batch(texts: list[str]) -> list[str]:
         raw = resp
     else:
         raw = resp.choices[0].message.content or ""
+
+    logger.debug("[ViTranslator] <<< RAW RESPONSE:\n%s", raw)
+
     lines = [l.strip() for l in raw.strip().splitlines() if l.strip()]
 
     result: list[str] = []
     for line in lines:
-        dot_pos = line.find(".")
-        if dot_pos != -1 and line[:dot_pos].strip().isdigit():
-            result.append(line[dot_pos + 1:].strip())
-        else:
-            result.append(line)
+        cleaned = re.sub(r"^\s*\d+\s*[\.)、:-]\s*", "", line).strip()
+        result.append(cleaned or line)
+
+    if len(result) != len(texts):
+        logger.warning(
+            "[ViTranslator] Count mismatch: sent %d texts, got %d lines. Raw response:\n%s",
+            len(texts), len(result), raw,
+        )
+
     return result
 
 
@@ -129,11 +149,40 @@ def _translate_all(texts: list[str]) -> list[str]:
     all_translated: list[str] = []
     for i in range(0, len(texts), BATCH_SIZE):
         batch = texts[i : i + BATCH_SIZE]
-        translated = _translate_batch(batch)
-        while len(translated) < len(batch):
-            translated.append(batch[len(translated)])
-        all_translated.extend(translated[:len(batch)])
+        try:
+            translated = _translate_batch(batch)
+        except Exception:
+            logger.exception("[ViTranslator] Batch translation failed, falling back to one-by-one")
+            translated = []
+
+        if len(translated) != len(batch):
+            # Model returned wrong count — fall back to translating one at a time
+            logger.warning(
+                "[ViTranslator] Batch returned %d/%d items, retrying individually",
+                len(translated), len(batch),
+            )
+            translated = []
+            for text in batch:
+                try:
+                    result = _translate_batch([text])
+                    translated.append(result[0] if result else text)
+                except Exception:
+                    logger.exception("[ViTranslator] Single-item translation failed, keeping original")
+                    translated.append(text)
+
+        all_translated.extend(translated)
     return all_translated
+
+
+def _is_translatable(text: str | None) -> bool:
+    """Return True only if text has real content worth translating."""
+    if not text:
+        return False
+    stripped = text.strip().strip('"\'""''')
+    if not stripped:
+        return False
+    # Must contain at least one Chinese character
+    return bool(re.search(r"[一-鿿]", stripped))
 
 
 # --- database translation ---------------------------------------------------
@@ -153,18 +202,28 @@ async def _translate_xhs_db_pass() -> int:
         for note in notes:
             texts = []
             fields_present = []
-            if note.title and note.title.strip():
-                texts.append(note.title)
+            if _is_translatable(note.title):
+                texts.append(note.title.strip())
                 fields_present.append("title")
-            if note.desc and note.desc.strip():
-                texts.append(note.desc)
+            if _is_translatable(note.desc):
+                texts.append(note.desc.strip())
                 fields_present.append("desc")
-            if note.tag_list and note.tag_list.strip():
-                texts.append(note.tag_list)
+            if _is_translatable(note.tag_list):
+                texts.append(note.tag_list.strip())
                 fields_present.append("tag_list")
 
             if texts:
-                translations = _translate_all(texts)
+                try:
+                    translations = _translate_all(texts)
+                except Exception:
+                    logger.exception("[ViTranslator] Translation failed for note %s; will retry later", note.note_id)
+                    continue
+                if len(translations) != len(texts):
+                    logger.warning(
+                        "[ViTranslator] Count mismatch for note %s (%d vs %d); will retry later",
+                        note.note_id, len(translations), len(texts),
+                    )
+                    continue
                 for field_name, translated_text in zip(fields_present, translations):
                     if field_name == "title":
                         note.title_vi = translated_text
@@ -176,7 +235,9 @@ async def _translate_xhs_db_pass() -> int:
             note.is_translated = 1
 
         await session.commit()
-        return len(notes)
+        translated_count = sum(1 for note in notes if note.is_translated == 1)
+        logger.info("[ViTranslator] DB pass translated %d/%d notes", translated_count, len(notes))
+        return translated_count
 
 
 # --- JSON file translation --------------------------------------------------
@@ -203,8 +264,8 @@ def _collect_texts(items: list[dict], fields: tuple[str, ...]) -> list[str]:
     for item in items:
         for f in fields:
             v = item.get(f, "")
-            if isinstance(v, str) and v.strip():
-                texts.append(v)
+            if isinstance(v, str) and _is_translatable(v):
+                texts.append(v.strip())
     return texts
 
 
@@ -217,7 +278,7 @@ def _apply_translations(
         new_item = dict(item)
         for f in fields:
             v = item.get(f, "")
-            if isinstance(v, str) and v.strip():
+            if isinstance(v, str) and _is_translatable(v):
                 if idx < len(translations):
                     new_item[f] = translations[idx]
                 idx += 1
@@ -251,6 +312,9 @@ def _scan_and_translate_files() -> None:
                 translated_data = data
             else:
                 translations = _translate_all(texts)
+                if not _valid_translations(texts, translations):
+                    logger.warning("[ViTranslator] Invalid translation result for file %s; skipping", json_path)
+                    continue
                 translated_data = _apply_translations(data, fields, translations)
 
             out_path = _vi_path(json_path)

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ChevronLeft,
   ChevronRight,
@@ -79,42 +79,60 @@ export function XiaohongshuPostDialog({
   const [activeImageIndex, setActiveImageIndex] = useState(0)
 
   const images = useMemo(() => {
+    if (!post) return []
     // Prefer locally downloaded images, fallback to CDN URLs (proxied)
-    if (post?.local_images && post.local_images.length > 0) {
+    if (post.local_images && post.local_images.length > 0) {
       return post.local_images
     }
-    return splitList(post?.image_list).map(
-      (url) => `/api/data/media-proxy?url=${encodeURIComponent(url)}`
-    )
-  }, [post?.local_images, post?.image_list])
+    return splitList(post.image_list)
+      .map((url) => url.replace(/^["']+|["']+$/g, '').trim())
+      .filter(Boolean)
+      .map((url) => `/api/data/media-proxy?url=${encodeURIComponent(url)}`)
+  }, [post])
+
   const tags = useMemo(() => {
-    // Attempt to read Vietnamese tags, fall back to standard tags
-    const rawTags = post?.tag_list_vi || post?.tag_list
+    if (!post) return []
+    const rawTags = post.tag_list_vi || post.tag_list
     return splitList(rawTags)
-  }, [post?.tag_list, post?.tag_list_vi])
+  }, [post])
+
   const topLevelComments = useMemo(
     () => comments.filter((comment) => !comment.parent_comment_id),
     [comments]
   )
 
-  if (!post) return null
-
-  const isVideo = post.type === 'video' && !!post.video_url
-  const videoSrc = isVideo
-    ? (post.local_videos && post.local_videos.length > 0
-        ? post.local_videos[0]
-        : `/api/data/media-proxy?url=${encodeURIComponent(splitList(post.video_url)[0] ?? '')}`)
-    : undefined
+  const isVideo = Boolean(post?.type === 'video' && post?.video_url)
+  const videoSrc = useMemo(() => {
+    if (!isVideo || !post) return undefined
+    if (post.local_videos && post.local_videos.length > 0) {
+      return post.local_videos[0]
+    }
+    const firstUrl = splitList(post.video_url)[0]
+    return firstUrl ? `/api/data/media-proxy?url=${encodeURIComponent(firstUrl)}` : undefined
+  }, [isVideo, post])
   const activeImage = images[activeImageIndex] ?? images[0]
   const hasMultipleImages = images.length > 1
 
-  const showPreviousImage = () => {
+  const showPreviousImage = useCallback(() => {
     setActiveImageIndex((index) => (index === 0 ? images.length - 1 : index - 1))
-  }
+  }, [images.length])
 
-  const showNextImage = () => {
+  const showNextImage = useCallback(() => {
     setActiveImageIndex((index) => (index + 1) % images.length)
-  }
+  }, [images.length])
+
+  // Keyboard navigation: left/right arrow keys
+  useEffect(() => {
+    if (!open || !hasMultipleImages || isVideo) return
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft') { e.preventDefault(); showPreviousImage() }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); showNextImage() }
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [open, hasMultipleImages, isVideo, showPreviousImage, showNextImage])
+
+  if (!post) return null
 
   return (
     <Dialog

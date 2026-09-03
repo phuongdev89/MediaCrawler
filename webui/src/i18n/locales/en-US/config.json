@@ -56,7 +56,9 @@
     "commentExtraction": "Comment Extraction",
     "subComments": "Sub-comments",
     "headlessMode": "HEADLESS_MODE",
-    "headlessModeHint": "Run browser without GUI"
+    "headlessModeHint": "Run browser without GUI",
+    "maxNotesCount": "MAX_NOTES_COUNT",
+    "maxNotesCountHint": "Limit the number of posts/videos to crawl"
   },
   "button": {
     "initiateScan": "INITIATE SCAN",

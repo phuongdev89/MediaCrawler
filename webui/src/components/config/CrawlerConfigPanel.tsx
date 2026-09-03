@@ -351,6 +351,21 @@ export function CrawlerConfigPanel() {
             </Select>
           </Field>
 
+          <Field label={t('field.maxNotesCount')} hint={t('field.maxNotesCountHint')}>
+            <Input
+              type="number"
+              min={1}
+              max={10000}
+              value={config.max_notes_count ?? 15}
+              onChange={(e) => {
+                const val = parseInt(e.target.value, 10)
+                updateConfig({ max_notes_count: isNaN(val) ? undefined : val })
+              }}
+              disabled={isDisabled}
+              className="h-9 text-xs font-mono"
+            />
+          </Field>
+
           <div className="space-y-2">
             <div className="flex items-center gap-3 rounded-lg border border-cyber-border-subtle bg-cyber-bg-tertiary/30 p-2.5 hover:border-cyber-border-DEFAULT transition-colors">
               <Checkbox
